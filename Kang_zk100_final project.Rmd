@@ -1,0 +1,99 @@
+---
+title: "finalproject"
+author: "Zhengwei Kang"
+date: "2020/5/5"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+## import data
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+tuition_cost <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-03-10/tuition_cost.csv')
+
+tuition_income <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-03-10/tuition_income.csv') 
+
+salary_potential <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-03-10/salary_potential.csv')
+
+historical_tuition <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-03-10/historical_tuition.csv')
+
+diversity_school <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-03-10/diversity_school.csv')
+
+schoolability= read_excel("C:/Users/lenovo/Downloads/2016_CATEF_Responses.xlsx")
+write.csv(tuition_cost,"tuition_cost")
+write.csv(salary_potential,"salary_potential")
+write.csv(historical_tuition,"historical_tuition")
+write.csv(diversity_school,"diversity_school")
+write.csv(schoolability,"schoolability")
+```
+
+```{r}
+## cauculate the average tuition last year and plot historical tuition changes
+tuitioncost= tuition_cost %>% select(name,state,type,degree_length,in_state_total,out_of_state_total)
+
+averagecost= tuitioncost %>%filter(type=="Public"|type=="Private") %>% group_by(type,degree_length) %>% summarise(avein=mean(in_state_total),aveout=mean(out_of_state_total))
+
+histuition= historical_tuition %>% filter(type=="Public"|type=="Private")
+histuition1=histuition %>% filter(tuition_type=="2 Year Constant"|tuition_type=="4 Year Constant")
+histuition1= histuition1 %>% separate(year,c("year","a"),sep = "-")
+histuition1= histuition1 %>% select(-a)
+histuition1$year=as.numeric(histuition1$year)
+histuition2=histuition1 %>% filter(tuition_type=="2 Year Constant")
+histuition3=histuition1 %>% filter(tuition_type=="4 Year Constant")
+print(averagecost)
+ggplot(histuition2,mapping = aes(x=year,y=tuition_cost,group=type,color=type))+geom_line()+geom_point()+ggtitle("2 year degree tuition change")+xlab("year")+ylab("avetuition")
+ggplot(histuition3,mapping = aes(x=year,y=tuition_cost,group=type,color=type))+geom_line()+geom_point()+ggtitle("4 year degree tuition change")+xlab("year")+ylab("avetuition")
+
+```
+
+```{r}
+## draw distribution maps of the average tuition fees in the US states last year
+library(choroplethr)
+library(choroplethrMaps)
+library(gridExtra)
+statetuition= tuitioncost %>% group_by(state) %>% summarise(avein=mean(in_state_total),aveout=mean(out_of_state_total))%>%filter(!is.na(state))
+statetuition$state=tolower(statetuition$state)
+statetuition1= statetuition %>% select(state,avein)
+names(statetuition1)=c("region","value")
+statetuition2= statetuition %>% select(state,aveout)
+names(statetuition2)=c("region","value")
+
+grid.arrange(
+  state_choropleth(statetuition1,title = "in state student tuition",legend = "avetuition",num_colors = 6),
+  state_choropleth(statetuition2,title = "out of state student tuition",legend = "avetuition",num_colors = 6),
+  ncol=1,nrow=2
+)
+```
+
+```{r}
+## study the reletion between potential salary in future for students with tuition of college
+salary= salary_potential %>% mutate(presalary=(early_career_pay+mid_career_pay)/2) %>% select(name,state_name,presalary)
+salaryandcost=inner_join(salary,tuitioncost,by="name")
+salaryandcost= salaryandcost %>% mutate(avecost=(in_state_total+out_of_state_total)/2)
+lmfit=lm(presalary~avecost,salaryandcost)
+summary(lmfit)
+ggplot(salaryandcost,mapping=aes(x=avecost,y=presalary))+geom_point()
+```
+
+```{r}
+## find relationship between tuition and school cost
+names(schoolability)[7]="cost1"
+names(schoolability)[16]="cost2"
+names(schoolability)[25]="cost3"
+names(schoolability)[38]="burdenstatus"
+schoolability1= schoolability %>% select(`Institution Name`,cost1,cost2,cost3,burdenstatus)
+burdenandcost= inner_join(schoolability1,tuitioncost,by=c("Institution Name"="name"))
+burdenandcost$cost1[is.na(burdenandcost$cost1)]=0
+burdenandcost$cost2[is.na(burdenandcost$cost2)]=0
+burdenandcost$cost3[is.na(burdenandcost$cost3)]=0
+burdenandcost= burdenandcost %>% mutate(cost=cost1+cost2+cost3)%>% mutate(avetui=(in_state_total+out_of_state_total)/2)
+diversity_school1=diversity_school %>% filter(category=="Women")
+burdenandcost= inner_join(burdenandcost,diversity_school1,by=c("Institution Name"="name"))
+burdenandcost=burdenandcost%>% mutate(netincome=total_enrollment*avetui/cost)
+burdenandcost1= burdenandcost %>% filter(cost!=0 & netincome<=100)
+boxplot(burdenandcost1$netincome)
+```
+
